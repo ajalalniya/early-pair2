@@ -65,13 +65,22 @@ The deploy job picks it up through the `self-hosted` label, which every runner h
 
 ### 4. Create the settings file
 
+The repository is private, so the template cannot be downloaded anonymously.
+Copy it up from your machine instead:
+
 ```
-sudo -iu github
-mkdir -p ~/early-pair2
-cd ~/early-pair2
-curl -fsSLo .env https://raw.githubusercontent.com/ajalalniya/early-pair2/main/deploy/.env.example
-chmod 600 .env
-nano .env
+# on your machine, from the repository root
+scp deploy/.env.example you@your-server:/tmp/early-pair2.env
+```
+
+then on the server:
+
+```
+sudo mkdir -p /home/github/early-pair2
+sudo mv /tmp/early-pair2.env /home/github/early-pair2/.env
+sudo chown -R github:github /home/github/early-pair2
+sudo chmod 600 /home/github/early-pair2/.env
+sudo -iu github nano ~/early-pair2/.env
 ```
 
 Fill in at least `POSTGRES_PASSWORD`, `EARLYPAIR_JWT_SECRET`,
