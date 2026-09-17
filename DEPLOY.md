@@ -107,11 +107,17 @@ sudo apt install -y caddy
 echo 'example.com {
     reverse_proxy 127.0.0.1:8081
 }' | sudo tee /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+sudo systemctl restart caddy          # restart, not reload: it may not be running yet
+sudo systemctl status caddy --no-pager
 ```
 
-and set `WEB_PORT=8081` in `.env` so Caddy owns ports 80 and 443. Point the
-domain's DNS at the server first; Caddy fetches the certificate itself.
+and set `WEB_PORT=8081` in `.env` so Caddy owns ports 80 and 443. Replace
+`example.com` with your domain, and point its DNS at the server first; Caddy
+fetches the certificate itself.
+
+If Caddy will not start, `sudo journalctl -u caddy -n 30` says why — most
+often another program already holds port 80 or 443
+(`sudo ss -tlnp | grep -E ':(80|443)'` shows which).
 
 ### 6. Optional repository variable
 
