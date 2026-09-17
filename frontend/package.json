@@ -1,0 +1,50 @@
+{
+  "name": "earlypair-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@coinbase/wallet-sdk": "^4.3.7",
+    "@tanstack/vue-query": "^5.102.8",
+    "@tanstack/vue-virtual": "^3.13.38",
+    "@wagmi/connectors": "^8.2.0",
+    "@wagmi/core": "^3.6.5",
+    "@walletconnect/ethereum-provider": "^2.24.0",
+    "pinia": "^4.0.3",
+    "viem": "^2.56.3",
+    "vue": "^3.5.42",
+    "vue-router": "^4.6.4",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tsconfig/node22": "^22.0.6",
+    "@types/node": "^22.20.2",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/test-utils": "^2.5.0",
+    "@vue/tsconfig": "^0.9.1",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7",
+    "vue-tsc": "^3.3.11"
+  }
+}

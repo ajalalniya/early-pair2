@@ -1,0 +1,356 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  filter: brightness(1.1);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.015 265);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.caps {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.tile {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-tile);
+  padding: 9px 11px;
+  min-width: 0;
+}
+
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: oklch(0.68 0.01 265);
+}
+.kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kv > div > :last-child {
+  color: oklch(0.86 0.01 265);
+  text-align: right;
+}
+
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Pill chips for filters and presets. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: oklch(0.72 0.01 265);
+  white-space: nowrap;
+}
+.pill:hover {
+  border-color: var(--border-active);
+}
+.pill[aria-pressed='true'] {
+  background: var(--chip-active);
+  border-color: var(--border-active);
+  color: var(--fg);
+}
+
+/* Square-ish preset chips (fee tiers, range presets). */
+.preset {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-3);
+}
+.preset[aria-pressed='true'] {
+  background: oklch(0.28 0.02 265);
+  border-color: oklch(0.48 0.02 265);
+  color: var(--fg);
+}
+
+/* Segmented control. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+.segmented > button {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: oklch(0.68 0.01 265);
+}
+.segmented > button[aria-selected='true'],
+.segmented > button[aria-pressed='true'] {
+  background: var(--chip-active);
+  color: var(--fg);
+}
+
+.btn {
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 9px 14px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: oklch(0.86 0.01 265);
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--border-active);
+}
+.btn-sm {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+}
+.btn-accent {
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn-accent:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.btn-danger-outline {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: oklch(0.24 0.03 25);
+  border-color: var(--danger-border);
+}
+
+/* Full-width primary action at the foot of a trade panel. */
+.action {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px;
+  border: none;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.action:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.action[data-tone='sell'] {
+  background: var(--danger);
+  color: oklch(0.19 0.03 25);
+}
+.action[data-tone='blocked'] {
+  background: var(--danger-soft-bg);
+  color: var(--danger-soft-fg);
+}
+.action[data-tone='busy'],
+.action:disabled:not([data-tone='blocked']) {
+  background: var(--chip-active);
+  color: oklch(0.86 0.01 265);
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.notice::before {
+  content: '';
+  flex: none;
+  margin-top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.notice[data-tone='accent'] {
+  border: 1px solid oklch(0.32 0.05 168);
+  background: oklch(0.22 0.025 168);
+  color: oklch(0.86 0.03 168);
+}
+.notice[data-tone='danger'] {
+  border: 1px solid var(--danger-border);
+  background: oklch(0.22 0.022 25);
+  color: oklch(0.85 0.05 25);
+}
+.notice[data-tone='warn'] {
+  border: 1px solid oklch(0.36 0.05 85);
+  background: oklch(0.22 0.025 85);
+  color: oklch(0.88 0.08 85);
+}
+.notice[data-tone='muted'] {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-inset);
+  color: var(--fg-3);
+}
+
+/* Bordered input box used by every trade form. */
+.box {
+  display: block;
+  border: 1px solid var(--border-soft);
+  border-radius: 11px;
+  padding: 11px 13px;
+}
+.box.inset {
+  background: var(--surface-inset);
+}
+.field-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* Vertical stack inside a trade tab. */
+.tab-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.big-input {
+  width: 100%;
+  margin-top: 6px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 500;
+  padding: 0;
+}
+.big-input:focus-visible {
+  outline: none;
+}
+.field:focus-within {
+  border-color: var(--border-active);
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes spinRing {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

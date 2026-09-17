@@ -1,0 +1,101 @@
+# Development stack.
+#
+# Postgres and Redis only. The prompt allowed ClickHouse or a Timescale
+# hypertable for the swap firehose; this uses plain Postgres with a time index
+# instead, which keeps the stack to two services and lets the same queries move
+# to Timescale later by running create_hypertable on the swaps table. The
+# migration says where. Swap history is pruned to 48 hours, so the table does
+# not grow without bound at this scale.
+#
+# Every image comes from AWS ECR Public's mirror of the official Docker Hub
+# images (same digests, no Docker Hub login). To use another mirror, set the
+# variables below in a .env file next to this one, e.g.
+#   GO_IMAGE=mirror.gcr.io/library/golang:1.26-alpine
+#   POSTGRES_IMAGE=mirror.gcr.io/library/postgres:16-alpine
+#   REDIS_IMAGE=mirror.gcr.io/library/redis:7-alpine
+
+# An explicit project name. Without it Compose uses the folder name, and
+# "backend" is common enough to collide with another project on the same
+# machine: volumes are named <project>_<volume>, so this stack would mount that
+# project's database and fail to authenticate against it — or worse, a
+# `docker compose down` here could remove the other project's containers.
+name: earlypair
+
+x-backend-build: &backend-build
+  context: .
+  args:
+    GO_IMAGE: ${GO_IMAGE:-public.ecr.aws/docker/library/golang:1.26-alpine}
+    GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}
+    environment:
+      POSTGRES_USER: earlypair
+      POSTGRES_PASSWORD: earlypair
+      POSTGRES_DB: earlypair
+    ports:
+      # Host port 5434, not 5432: a locally installed Postgres usually holds
+      # 5432 already. Containers reach it as postgres:5432 regardless.
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U earlypair -d earlypair"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: ${REDIS_IMAGE:-public.ecr.aws/docker/library/redis:7-alpine}
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: *backend-build
+    image: earlypair-backend:local
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: "postgres://earlypair:earlypair@postgres:5432/earlypair?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      EARLYPAIR_JWT_SECRET: "${EARLYPAIR_JWT_SECRET:-dev-secret-change-me}"
+      EARLYPAIR_CORS_ORIGINS: "http://localhost:5173"
+      EARLYPAIR_LOG_FORMAT: text
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    restart: unless-stopped
+
+  indexer:
+    # Same image as the api service; only the entrypoint differs. The build is
+    # repeated so compose never tries to pull this local tag from a registry,
+    # and it is a cache hit after the api build.
+    build: *backend-build
+    image: earlypair-backend:local
+    entrypoint: ["/usr/local/bin/earlypair-indexer"]
+    command: ["-config", "/config/earlypair.yaml"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: "postgres://earlypair:earlypair@postgres:5432/earlypair?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      EARLYPAIR_METRICS_ADDR: ":9091"
+      EARLYPAIR_LOG_FORMAT: text
+    ports:
+      - "9091:9091"
+    # Scaling this past one replica is safe but pointless without splitting the
+    # chain set: each instance takes a per-chain advisory lock and any chain
+    # already owned is skipped.
+    restart: unless-stopped
+
+volumes:
+  pgdata:

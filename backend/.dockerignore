@@ -1,0 +1,9 @@
+.git
+*.md
+!README.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.exe
+*.test
+*.out

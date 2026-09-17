@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Test output
+test-results/
+playwright-report/
+coverage/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Go build output
+/backend/bin/
+*.exe
+*.test
+*.out
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

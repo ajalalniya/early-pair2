@@ -1,0 +1,582 @@
+# EarlyPair configuration.
+#
+# Everything here runs against free public endpoints with no API keys. That is
+# the design constraint the whole ingestion architecture follows from: these
+# providers rate-limit hard, cap eth_getLogs ranges without documenting it, drop
+# WebSockets without warning, and sometimes serve a stale head. Assume each of
+# them can vanish; the system is meant to stay green on N-1.
+#
+# Secrets never belong in this file. Per-endpoint URLs can be overridden with
+# EARLYPAIR_RPC_URL_<ID> (id upper-snaked), and explorer keys with
+# EARLYPAIR_EXPLORER_KEY_<CHAIN>.
+
+server:
+  addr: ":8080"
+  metricsAddr: ":9090"
+  corsOrigins:
+    - "http://localhost:5173"
+  publicCacheTtl: 2s
+
+database:
+  url: "postgres://earlypair:earlypair@localhost:5432/earlypair?sslmode=disable"
+  autoMigrate: true
+
+redis:
+  url: "redis://localhost:6379/0"
+
+log:
+  level: info
+  format: text
+
+rpc:
+  hedgeAfter: 400ms
+  maxHedges: 2
+  requestTimeout: 12s
+  breakerFailures: 5
+  breakerProbeAfter: 30s
+  headLagEvictBlocks: 3
+  headLagEvictFor: 30s
+  # The UI tells users "auto-resubscribe on socket close, HTTP fallback after
+  # 2 drops". These are the numbers behind that sentence.
+  wsDropsBeforeDemote: 2
+  wsDropWindow: 10m
+  wsDemoteFor: 15m
+  wsBackoffMin: 500ms
+  wsBackoffMax: 30s
+
+ingest:
+  # A start begins at the chain head: pairs created while the indexer was
+  # stopped are skipped, not swept. Set true to resume from the stored cursor
+  # instead (catching up at most maxBackfillBlocks).
+  resumeOnStart: false
+  # A cursor further behind than this jumps to head rather than grinding
+  # through hours of history and then flooding the feed with stale pairs.
+  maxBackfillBlocks: 50000
+  backfillChunk: 200
+  doorbellDebounce: 150ms
+  confirmCheckEvery: 15s
+  # Workers are shared across chains and each pool's enrichment is mostly
+  # waiting on round trips, so this is what decides how fast a new pair gets its
+  # tokens — and a pair cannot be market-tracked until it has them. Eight left
+  # 200 Arc pairs queued at ~75 new pairs a minute while the RPC budget sat
+  # three-quarters idle.
+  enrichWorkers: 24
+  # New pairs have their liquidity, 1h volume, buyers/sellers and 1h price
+  # change kept live for this long after creation, then frozen. Tracking every
+  # pool forever is what a public RPC budget cannot pay for. Favorites (starred
+  # pairs) are the exception: they are tracked until unstarred.
+  trackWindow: 10m
+  trackEvery: 3s
+  # Three minutes after creation each pair is judged. With keepIf: both, a pair
+  # is removed when liquidity is under minLiquidityUsd OR volume is under
+  # minVolumeUsd; with keepIf: either it is removed only when both fall short.
+  # A dollar figure that cannot be established counts as not clearing.
+  # Survivors are tracked for the rest of trackWindow.
+  screen:
+    after: 3m
+    minLiquidityUsd: 10000
+    minVolumeUsd: 100
+    keepIf: both
+  enrichQueueSize: 4096
+
+stream:
+  replayWindow: 5m
+  replayMaxFrames: 20000
+  clientQueue: 512
+  pingInterval: 20s
+  coalesceWindow: 250ms
+
+auth:
+  # Set EARLYPAIR_JWT_SECRET in the environment; the API refuses to start
+  # without it rather than failing per request.
+  jwtSecret: ""
+  sessionTtl: 24h
+  nonceTtl: 5m
+  domain: "localhost"
+
+risk:
+  sellersThin: 14
+  ratioHigh: 20
+  lpUnlocked: 22
+  lpShortLock: 10
+  mintActive: 20
+  taxNonZero: 8
+  taxPunitive: 18
+  topHeavyMild: 10
+  topHeavy: 14
+  topHeavySevere: 20
+  topHeavyExtreme: 26
+  fewHolders: 8
+  unverified: 6
+  # A sell that reverts in simulation means the position cannot be exited at
+  # all, so this alone has to clear the gate threshold.
+  honeypotSimFailed: 70
+  # A pool charging 25%+ on every trade (a Uniswap v4 setting) gates on its own.
+  poolFeeExtreme: 70
+  gateThreshold: 60
+
+explorers:
+  eth:
+    api: "https://api.etherscan.io/api"
+    apiKey: ""   # EARLYPAIR_EXPLORER_KEY_ETH
+  base:
+    api: "https://api.basescan.org/api"
+    apiKey: ""   # EARLYPAIR_EXPLORER_KEY_BASE
+  bsc:
+    api: "https://api.bscscan.com/api"
+    apiKey: ""   # EARLYPAIR_EXPLORER_KEY_BSC
+  arb:
+    api: "https://api.arbiscan.io/api"
+    apiKey: ""   # EARLYPAIR_EXPLORER_KEY_ARB
+
+chains:
+  - id: eth
+    name: Ethereum
+    tag: ETH
+    kind: evm
+    numericId: 1
+    enabled: false
+    blockTime: 12s
+    confirmations: 12
+    maxLogRange: 500
+    explorer: "https://etherscan.io"
+    nativeSymbol: ETH
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    # Uniswap v4 trading: quotes from V4Quoter, swaps through the Universal
+    # Router, ERC-20 input through Permit2. Addresses are Uniswap's published
+    # deployments, each checked on-chain: poolManager() on the quoter and the
+    # router returns this chain's PoolManager.
+    uniswapV4:
+      quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203"
+      universalRouter: "0x66a9893cc07d91d95644aedd05d03f95e1dba8af"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    wrappedNative: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+    routerV2: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+    stables:
+      - "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"  # USDC
+      - "0xdac17f958d2ee523a2206206994597c13d831ec7"  # USDT
+      - "0x6b175474e89094c44da98b954eedeac495271d0f"  # DAI
+    # Reserves of a deep WETH/USDC v2 pool give the native price. No external
+    # price feed is used anywhere in this service.
+    nativePriceRef: "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"  # UniV2 USDC/WETH
+    nativePriceRefNative: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+    nativePriceRefNativeDecimals: 18
+    nativePriceRefStableDecimals: 6
+    lpLockers:
+      - "0x663A5C229c09b049E36dCc11a9B0d4a8Eb9db214"  # Unicrypt UNCX
+      - "0xE2fE530C047f2d85298b07D9333C05737f1435fB"  # Team Finance
+    factories:
+      - address: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"
+        dex: "Uniswap v2"
+        model: v2
+        event: pair_created_v2
+        feeBps: 30
+      - address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+        dex: "Uniswap v3"
+        model: clmm
+        event: pool_created_v3
+      # Uniswap v4: one PoolManager singleton per chain; pools are PoolIds.
+      - address: "0x000000000004444c5dc75cB358380D2e3dE08A90"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+      - address: "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac"
+        dex: "SushiSwap"
+        model: v2
+        event: pair_created_v2
+        feeBps: 30
+
+  - id: base
+    name: Base
+    tag: BASE
+    kind: evm
+    numericId: 8453
+    enabled: true
+    blockTime: 2s
+    confirmations: 8
+    maxLogRange: 500
+    explorer: "https://basescan.org"
+    nativeSymbol: ETH
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    uniswapV4:
+      quoter: "0x0d5e0f971ed27fbff6c2837bf31316121532048d"
+      universalRouter: "0x6ff5693b99212da76ad316178a184ab56d299b43"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    # Uniswap v3 on Base. Checked on-chain: factory() on both returns the v3
+    # factory configured under factories below.
+    uniswapV3:
+      quoter: "0x3d4e44eb1374240ce5f1b871ab261cd16335b76a"
+      swapRouter: "0x2626664c2603336e57b271c5c0b26f421741e481"
+    wrappedNative: "0x4200000000000000000000000000000000000006"
+    routerV2: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24"
+    stables:
+      - "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"  # USDC
+      - "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca"  # USDbC
+    nativePriceRef: "0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C"  # Aerodrome WETH/USDC
+    nativePriceRefNative: "0x4200000000000000000000000000000000000006"
+    nativePriceRefNativeDecimals: 18
+    nativePriceRefStableDecimals: 6
+    factories:
+      - address: "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6"
+        dex: "Uniswap v2"
+        model: v2
+        event: pair_created_v2
+        feeBps: 30
+      - address: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
+        dex: "Uniswap v3"
+        model: clmm
+        event: pool_created_v3
+      # Uniswap v4: one PoolManager singleton per chain; pools are PoolIds.
+      - address: "0x498581fF718922c3f8e6A244956aF099B2652b2b"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+      - address: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+        dex: "Aerodrome"
+        model: v2
+        event: pool_created_solidly
+
+  - id: bsc
+    name: BSC
+    tag: BSC
+    kind: evm
+    numericId: 56
+    enabled: false
+    # Measured 0.45s (was configured 3s, which made "last hour" windows cover
+    # about nine minutes). Confirmations keep the same ~45s depth; pollInterval
+    # keeps the same polling pace, so RPC cost is unchanged.
+    blockTime: 450ms
+    pollInterval: 1s
+    confirmations: 100
+    maxLogRange: 500
+    explorer: "https://bscscan.com"
+    nativeSymbol: BNB
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    uniswapV4:
+      quoter: "0x9f75dd27d6664c475b90e105573e550ff69437b0"
+      universalRouter: "0x1906c1d672b88cd1b9ac7593301ca990f94eae07"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    wrappedNative: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"
+    routerV2: "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+    stables:
+      - "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"  # USDC
+      - "0x55d398326f99059ff775485246999027b3197955"  # USDT
+    nativePriceRef: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE"  # Pancake v2 WBNB/USDT
+    nativePriceRefNative: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"
+    nativePriceRefNativeDecimals: 18
+    nativePriceRefStableDecimals: 18
+    factories:
+      # PancakeSwap v2 is disabled: no new v2 pairs are discovered on BSC.
+      # Uncomment to re-enable.
+      # - address: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73"
+      #   dex: "PancakeSwap v2"
+      #   model: v2
+      #   event: pair_created_v2
+      #   feeBps: 25
+      - address: "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"
+        dex: "PancakeSwap v3"
+        model: clmm
+        event: pool_created_v3
+      # Uniswap v4: one PoolManager singleton per chain; pools are PoolIds.
+      - address: "0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+
+  - id: arb
+    name: Arbitrum
+    tag: ARB
+    kind: evm
+    numericId: 42161
+    enabled: false
+    # Measured 0.25s (was configured 1s: "last hour" covered about fifteen
+    # minutes). Same ~8s confirmation depth and polling pace as before.
+    blockTime: 250ms
+    pollInterval: 500ms
+    confirmations: 32
+    maxLogRange: 500
+    explorer: "https://arbiscan.io"
+    nativeSymbol: ETH
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    uniswapV4:
+      quoter: "0x3972c00f7ed4885e145823eb7c655375d275a1c5"
+      universalRouter: "0xa51afafe0263b40edaef0df8781ea9aa03e381a3"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    wrappedNative: "0x82af49447d8a07e3bd95bd0d56f35241523fbab1"
+    stables:
+      - "0xaf88d065e77c8cc2239327c5edb3a432268e5831"  # USDC
+      - "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"  # USDT
+    factories:
+      - address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+        dex: "Uniswap v3"
+        model: clmm
+        event: pool_created_v3
+      # Uniswap v4: one PoolManager singleton per chain; pools are PoolIds.
+      - address: "0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+      - address: "0x6EcCab422D763aC031210895C81787E87B43A652"
+        dex: "Camelot v2"
+        model: v2
+        event: pair_created_v2
+        feeBps: 30
+
+  # Robinhood Chain: an Arbitrum Orbit L2. Chain id, Multicall3 and the explorer
+  # were verified against the public RPC.
+  #
+  # Blocks land every ~100ms (measured 0.101s over 10,000 blocks). blockTime is
+  # that real value, because it sizes every wall-clock window; at the earlier
+  # 1s the "last hour" of trades would have been six minutes. Polling stays at
+  # 1s via pollInterval, so the public RPC budget is not spent on empty ranges.
+  #
+  # Discovery is Uniswap v4 only. Every address below was verified on-chain:
+  #   - PoolManager: the sole emitter of v4 Initialize events (293 in 20,000
+  #     blocks); its bytecode matches Base's PoolManager except the 20 bytes
+  #     where each contract embeds its own address; its swaps follow the v4
+  #     sign convention (1,330 of 1,330).
+  #   - WETH: holds 41,073 ETH against a 41,073 supply, so it is the real wrapper.
+  #   - USDG (Paxos Global Dollar, 6 decimals): the only stablecoin among every
+  #     currency used by recent pools.
+  # No nativePriceRef: there is no v2-style WETH/USDG pool to read, so USD values
+  # for ETH-quoted pools stay null rather than guessed. USDG-quoted pools price.
+  - id: rbn
+    name: Robinhood
+    tag: RBN
+    kind: evm
+    numericId: 4663
+    enabled: true
+    blockTime: 100ms
+    pollInterval: 1s
+    confirmations: 80
+    # 500 blocks is under a minute here, and the single endpoint's 5 req/s could
+    # not sweep, confirm and catch up in steps that small: the cursor fell 40
+    # minutes behind, and pairs found that late are never market-tracked. The
+    # endpoint serves address-filtered 5,000-block queries (verified), so both
+    # live sweeps and catch-ups use that width.
+    maxLogRange: 5000
+    backfillChunk: 5000
+    explorer: "https://robinhoodchain.blockscout.com"
+    nativeSymbol: ETH
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    # Robinhood's Universal Router takes the older exact-input layout, with a
+    # uint256 (its minHopPriceX36) before hookData.
+    uniswapV4:
+      quoter: "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
+      universalRouter: "0x8876789976decbfcbbbe364623c63652db8c0904"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+      extraSwapParam: true
+    wrappedNative: "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
+    stables:
+      - "0x5fc5360d0400a0fd4f2af552add042d716f1d168"  # USDG
+    factories:
+      - address: "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+
+  # Arc is Circle's L1 where gas is paid in USDC, so there is no wrapped native
+  # token: the gas balance has a 6-decimal ERC-20 interface at 0x3600…0000
+  # (symbol USDC, verified on-chain), and pools pair against that address. The
+  # native price needs no reference pool — a dollar is a dollar.
+  - id: arc
+    name: Arc
+    tag: ARC
+    kind: evm
+    numericId: 5042
+    enabled: true
+    # Measured 0.51s over 2,000 blocks on 2026-09-16. Confirmations keep a ~30s
+    # depth, in line with the other fast chains.
+    blockTime: 500ms
+    pollInterval: 1s
+    confirmations: 60
+    # Blockdaemon serves 20,000-block ranges; dRPC's free tier refuses over
+    # 10,000. 2,000 keeps both happy, and at ~1,000 new v3 pools every 20,000
+    # blocks it keeps responses small.
+    maxLogRange: 2000
+    backfillChunk: 2000
+    explorer: "https://explorer.arc.io"
+    nativeSymbol: USDC
+    nativeIsStable: true
+    multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11"
+    # Uniswap's published Arc deployment. Checked on-chain: poolManager() on
+    # both the quoter and the Universal Router returns this PoolManager.
+    uniswapV4:
+      quoter: "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
+      universalRouter: "0x4fca4a51ab4f23a7447b3284fbd7d73289a89fb1"
+      permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+      # Arc's router takes the same older exact-input layout as Robinhood's,
+      # read off a swap that succeeded on-chain here. Without it hookData is
+      # decoded from the wrong offset: hookless pools ignore the garbage and
+      # swap anyway, hooked pools revert — which is how it first showed up.
+      extraSwapParam: true
+    # Uniswap v3 on Arc. Checked on-chain: factory() on both the QuoterV2 and
+    # SwapRouter02 returns the v3 factory configured below.
+    uniswapV3:
+      quoter: "0x7dfd4f31be6814d2906bde155c3e1b146eac1468"
+      swapRouter: "0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77"
+    stables:
+      - "0x3600000000000000000000000000000000000000"  # USDC, the gas token's ERC-20
+    factories:
+      - address: "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+        dex: "Uniswap v4"
+        model: clmm
+        event: initialize_v4
+      # Checked on-chain: feeAmountTickSpacing(3000)=60 and (500)=10, and it is
+      # the busier of the two on Arc today.
+      - address: "0xf0db7b58379503491d857db50ac9ece64c653918"
+        dex: "Uniswap v3"
+        model: clmm
+        event: pool_created_v3
+
+  # Solana and SUI are configured but disabled: their ingesters are not
+  # implemented. Enabling them would produce an empty feed that looks like
+  # "no new pools" rather than "not built yet", so they stay off until the
+  # getSignaturesForAddress and suix_queryEvents cursors exist.
+  - id: sol
+    name: Solana
+    tag: SOL
+    kind: solana
+    enabled: false
+    nativeSymbol: SOL
+    explorer: "https://solscan.io"
+
+  - id: sui
+    name: SUI
+    tag: SUI
+    kind: sui
+    enabled: false
+    nativeSymbol: SUI
+    explorer: "https://suivision.xyz"
+
+endpoints:
+  # At least two HTTP endpoints per chain, so hedging has somewhere to go and
+  # one provider's outage is not the chain's outage. Rate limits are set
+  # conservatively: guessing high on a free tier is how you get soft-banned.
+  - id: eth-http-publicnode
+    chain: eth
+    transport: http
+    url: "https://ethereum-rpc.publicnode.com"
+    rateLimit: 8
+    weight: 2
+  - id: eth-http-llamarpc
+    chain: eth
+    transport: http
+    url: "https://eth.llamarpc.com"
+    rateLimit: 5
+  - id: eth-http-drpc
+    chain: eth
+    transport: http
+    url: "https://eth.drpc.org"
+    rateLimit: 5
+  - id: eth-ws-publicnode
+    chain: eth
+    transport: ws
+    url: "wss://ethereum-rpc.publicnode.com"
+    rateLimit: 10
+
+  - id: base-http-official
+    chain: base
+    transport: http
+    url: "https://mainnet.base.org"
+    rateLimit: 8
+    weight: 2
+  - id: base-http-publicnode
+    chain: base
+    transport: http
+    url: "https://base-rpc.publicnode.com"
+    rateLimit: 8
+  - id: base-http-llamarpc
+    chain: base
+    transport: http
+    url: "https://base.llamarpc.com"
+    rateLimit: 5
+  - id: base-ws-publicnode
+    chain: base
+    transport: ws
+    url: "wss://base-rpc.publicnode.com"
+    rateLimit: 10
+
+  - id: bsc-http-publicnode
+    chain: bsc
+    transport: http
+    url: "https://bsc-rpc.publicnode.com"
+    rateLimit: 8
+    weight: 2
+  - id: bsc-http-official
+    chain: bsc
+    transport: http
+    url: "https://bsc-dataseed.bnbchain.org"
+    rateLimit: 6
+  - id: bsc-ws-publicnode
+    chain: bsc
+    transport: ws
+    url: "wss://bsc-rpc.publicnode.com"
+    rateLimit: 10
+
+  - id: arb-http-publicnode
+    chain: arb
+    transport: http
+    url: "https://arbitrum-one-rpc.publicnode.com"
+    rateLimit: 8
+    weight: 2
+  - id: arb-http-official
+    chain: arb
+    transport: http
+    url: "https://arb1.arbitrum.io/rpc"
+    rateLimit: 6
+  - id: arb-ws-publicnode
+    chain: arb
+    transport: ws
+    url: "wss://arbitrum-one-rpc.publicnode.com"
+    rateLimit: 10
+
+  # Only one public endpoint is known for Robinhood so far, so hedging has
+  # nowhere to go; add a second through the UI or here when one exists.
+  - id: rbn-http-official
+    chain: rbn
+    transport: http
+    url: "https://rpc.mainnet.chain.robinhood.com/"
+    rateLimit: 5
+    weight: 2
+
+  # Arc. Circle's own endpoint, https://rpc.mainnet.arc.io, answers Cloudflare
+  # error 1009 (region blocked) from this host, so it is disabled rather than
+  # left to fail every request; enable it where it is reachable. The two below
+  # were verified from here: both return chainId 0x13b2.
+  # Arc mints pairs far faster than the other chains — around 75 a minute — and
+  # every one needs its tokens read before it can be tracked, so the whole feed
+  # is as fresh as the request budget allows. These limits were measured, not
+  # guessed: 20/s to Blockdaemon and 15/s to dRPC, sustained for 15s, returned
+  # 525 responses and no errors.
+  - id: arc-http-blockdaemon
+    chain: arc
+    transport: http
+    url: "https://rpc.blockdaemon.mainnet.arc.io"
+    rateLimit: 20
+    burst: 20
+    weight: 2
+    # Verified: serves address-filtered 20,000-block eth_getLogs ranges.
+    maxLogRange: 20000
+  - id: arc-http-drpc
+    chain: arc
+    transport: http
+    url: "https://rpc.drpc.mainnet.arc.io"
+    # Well under the 15/s plain eth_getBlockByNumber sustained cleanly: this tier
+    # bills by call weight, and eth_call drew 429s here at both 5/s and 10/s.
+    # Blockdaemon carries the volume; this is a hedge partner.
+    rateLimit: 6
+    # The free plan refuses ranges over 10,000 blocks.
+    maxLogRange: 10000
+  - id: arc-http-drpc-public
+    chain: arc
+    transport: http
+    url: "https://arc.drpc.org"
+    rateLimit: 10
+    maxLogRange: 10000
+  - id: arc-http-official
+    chain: arc
+    transport: http
+    url: "https://rpc.mainnet.arc.io"
+    rateLimit: 5
+    disabled: true
