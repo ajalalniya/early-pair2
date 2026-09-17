@@ -117,7 +117,7 @@ fetches the certificate itself.
 
 If Caddy will not start, `sudo journalctl -u caddy -n 30` says why — most
 often another program already holds port 80 or 443
-(`sudo ss -tlnp | grep -E ':(80|443)'` shows which).
+(`sudo ss -tlnp | grep -E ':(80|443) '` shows which).
 
 ### 6. Optional repository variable
 
