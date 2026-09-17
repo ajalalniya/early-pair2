@@ -1,0 +1,76 @@
+# Production stack, run on the server by the deploy job.
+#
+# The images come from GitHub Container Registry, tagged with the release
+# (TAG, set by the workflow; `latest` otherwise). Settings and secrets come
+# from the .env file next to this one on the server — see .env.example.
+#
+# Only the web container publishes a port. It serves the app and forwards /api
+# to the backend, so Postgres, Redis and the API are reachable only from inside
+# this stack.
+name: early-pair2
+
+x-backend-env: &backend-env
+  DATABASE_URL: "postgres://earlypair:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/earlypair?sslmode=disable"
+  REDIS_URL: "redis://redis:6379/0"
+  EARLYPAIR_LOG_FORMAT: json
+
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: earlypair
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: earlypair
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U earlypair -d earlypair"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+    # Pub/sub only; nothing in it needs to survive a restart.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/${IMAGE_OWNER:-ajalalniya}/early-pair2-backend:${TAG:-latest}
+    env_file: .env
+    environment: *backend-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  indexer:
+    # Same image as the api; only the entrypoint differs.
+    image: ghcr.io/${IMAGE_OWNER:-ajalalniya}/early-pair2-backend:${TAG:-latest}
+    entrypoint: ["/usr/local/bin/earlypair-indexer"]
+    command: ["-config", "/config/earlypair.yaml"]
+    env_file: .env
+    environment:
+      <<: *backend-env
+      EARLYPAIR_METRICS_ADDR: ":9091"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/${IMAGE_OWNER:-ajalalniya}/early-pair2-web:${TAG:-latest}
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

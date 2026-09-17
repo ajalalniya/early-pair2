@@ -1,0 +1,181 @@
+name: CI/CD
+
+# Every push and pull request is tested. A version tag (v1.2.3) is also built
+# into images, pushed to GitHub Container Registry, and deployed to the server
+# by the self-hosted runner installed there — the same flow as early-pairs,
+# with the tests in front so a broken build never reaches the server.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w"; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -short -count=1 ./...
+
+  frontend:
+    name: Frontend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+  build-and-push:
+    name: Build and push images
+    needs: [backend, frontend]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image names
+        id: names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "backend=ghcr.io/${owner}/early-pair2-backend" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${owner}/early-pair2-web" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: |
+            ${{ steps.names.outputs.backend }}:${{ github.ref_name }}
+            ${{ steps.names.outputs.backend }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          # Public, not a secret: it is compiled into the page either way.
+          build-args: VITE_WALLETCONNECT_ID=${{ vars.VITE_WALLETCONNECT_ID }}
+          tags: |
+            ${{ steps.names.outputs.web }}:${{ github.ref_name }}
+            ${{ steps.names.outputs.web }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    name: Deploy to server
+    needs: build-and-push
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/home/github/early-pair2' }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Update the compose file
+        run: |
+          mkdir -p "$DEPLOY_DIR"
+          cp deploy/docker-compose.yml "$DEPLOY_DIR/docker-compose.yml"
+          if [ ! -f "$DEPLOY_DIR/.env" ]; then
+            echo "::error::$DEPLOY_DIR/.env is missing. Copy deploy/.env.example there and fill it in (see DEPLOY.md)."
+            exit 1
+          fi
+
+      - name: Deploy
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          export IMAGE_OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          docker compose pull
+          docker compose up -d --remove-orphans
+          # Remember what is running, so a manual `docker compose up -d` in this
+          # directory starts the same release rather than whatever `latest` is.
+          echo "$TAG" > .deployed-tag
+
+      - name: Check the site is up
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          port="$(grep -E '^WEB_PORT=' .env | tail -1 | cut -d= -f2)"
+          port="${port:-80}"
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${port}/healthz" >/dev/null; then
+              echo "Release $TAG is up on port ${port}."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The site did not become healthy within 150s."
+          docker compose ps
+          docker compose logs --tail=80 api indexer web
+          exit 1
+
+      - name: Log out and clean up old images
+        if: always()
+        run: |
+          docker logout ghcr.io || true
+          docker image prune -f --filter "until=168h" || true

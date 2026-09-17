@@ -325,6 +325,11 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("EARLYPAIR_JWT_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v
 	}
+	// The sign-in message names the site it is for, and wallets warn when that
+	// does not match the page asking: a deployment must set its own host here.
+	if v := os.Getenv("EARLYPAIR_AUTH_DOMAIN"); v != "" {
+		cfg.Auth.Domain = v
+	}
 	if v := os.Getenv("EARLYPAIR_CORS_ORIGINS"); v != "" {
 		cfg.Server.CORSOrigins = splitList(v)
 	}
