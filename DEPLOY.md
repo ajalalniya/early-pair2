@@ -97,7 +97,28 @@ The deploy directory defaults to `/home/github/early-pair2`. To use another,
 set a repository variable `DEPLOY_DIR` (Settings → Secrets and variables →
 Actions → Variables).
 
-### 5. HTTPS
+### 5. Without a domain: plain http on the server's IP
+
+Skip the TLS proxy entirely and serve on a free port. In `.env`:
+
+```
+WEB_PORT=8081
+EARLYPAIR_AUTH_DOMAIN=203.0.113.10:8081
+EARLYPAIR_CORS_ORIGINS=http://203.0.113.10:8081
+```
+
+with your server's IP. The port belongs in `EARLYPAIR_AUTH_DOMAIN`: wallets
+compare the sign-in message with the page's host, and the host includes it.
+Open the port (`sudo ufw allow 8081/tcp`, and in the hosting provider's
+firewall if it has one), then browse to `http://203.0.113.10:8081`.
+
+Browser-extension wallets work over http. What is lost: traffic is not
+encrypted — keys never leave the wallet, but the sign-in session could be
+copied on a hostile network — the browser marks the site "Not secure", and
+WalletConnect may refuse. A free subdomain (DuckDNS, for example) is enough
+to move to https with the next section.
+
+### 5b. With a domain: HTTPS
 
 Wallets expect the site over https. The stack serves plain http on
 `WEB_PORT`; put a TLS proxy in front of it. With Caddy on the same server:
