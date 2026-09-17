@@ -78,6 +78,12 @@ ingest:
     minVolumeUsd: 100
     keepIf: both
   enrichQueueSize: 4096
+  # Pools older than this are deleted, with their reserves, risk history and
+  # swaps, so the database stays bounded — Arc alone launches thousands of pairs
+  # a day. Starred pools (including those added by address) and pools someone
+  # traded are always kept. 0 keeps everything. EARLYPAIR_POOL_RETENTION
+  # overrides it without a rebuild, e.g. 72h.
+  poolRetention: 48h
 
 stream:
   replayWindow: 5m

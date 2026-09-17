@@ -21,6 +21,21 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-24.04
+    # A disposable database for the store tests (pool retention is SQL, so it is
+    # tested against Postgres itself). Without it those tests skip.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      EARLYPAIR_TEST_DATABASE_URL: postgres://ci:ci@localhost:5432/ci?sslmode=disable
     defaults:
       run:
         working-directory: backend

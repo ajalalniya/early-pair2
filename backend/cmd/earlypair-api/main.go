@@ -120,7 +120,7 @@ func run() error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return pool.Run(gctx) })
 	g.Go(func() error { return hub.Run(gctx) })
-	g.Go(func() error { return janitor(gctx, st, log) })
+	g.Go(func() error { return janitor(gctx, st, cfg.Ingest.PoolRetention, log) })
 	if bus != nil {
 		g.Go(func() error { return bus.RunSubscriber(gctx, hub) })
 	} else {
@@ -164,7 +164,7 @@ func run() error {
 
 // janitor keeps the unbounded tables bounded. Every one of these deletes data
 // the product has already stopped asking about.
-func janitor(ctx context.Context, st *store.Store, log *slog.Logger) error {
+func janitor(ctx context.Context, st *store.Store, poolRetention time.Duration, log *slog.Logger) error {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -189,6 +189,19 @@ func janitor(ctx context.Context, st *store.Store, log *slog.Logger) error {
 				log.Debug("reorged pool purge failed", "error", err)
 			} else if n > 0 {
 				log.Debug("purged reorged pools", "rows", n)
+			}
+			// Old pools go, bounded per tick so a first run on a large backlog
+			// clears it over several ticks instead of one long delete. Tokens
+			// only a deleted pool used go after them.
+			if n, err := st.PruneOldPools(ctx, poolRetention, 40); err != nil {
+				log.Warn("old pool prune failed", "error", err)
+			} else if n > 0 {
+				log.Info("pruned old pools", "rows", n, "olderThan", poolRetention)
+			}
+			if n, err := st.PruneOrphanTokens(ctx, poolRetention, 40); err != nil {
+				log.Warn("orphan token prune failed", "error", err)
+			} else if n > 0 {
+				log.Info("pruned orphan tokens", "rows", n)
 			}
 			// A topic matching faster than the ceiling is suspended rather than
 			// allowed to consume the chain's whole log budget.

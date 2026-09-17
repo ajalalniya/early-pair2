@@ -119,6 +119,10 @@ type Ingest struct {
 	TrackEvery      time.Duration `yaml:"trackEvery"`
 	Screen          Screen        `yaml:"screen"`
 	EnrichQueueSize int           `yaml:"enrichQueueSize"`
+	// PoolRetention is how long a pool is kept after its creation. Older pools
+	// are deleted with their reserves, risk history and swaps, except starred
+	// pools and pools someone traded. Zero keeps every pool forever.
+	PoolRetention time.Duration `yaml:"poolRetention"`
 }
 
 // Screen is the bar a new pair must clear to stay in the feed, judged After
@@ -237,6 +241,7 @@ func Default() Config {
 				KeepIf:          "both",
 			},
 			EnrichQueueSize: 4096,
+			PoolRetention:   48 * time.Hour,
 		},
 		Stream: Stream{
 			ReplayWindow:    5 * time.Minute,
@@ -329,6 +334,11 @@ func applyEnv(cfg *Config) {
 	// does not match the page asking: a deployment must set its own host here.
 	if v := os.Getenv("EARLYPAIR_AUTH_DOMAIN"); v != "" {
 		cfg.Auth.Domain = v
+	}
+	if v := os.Getenv("EARLYPAIR_POOL_RETENTION"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+			cfg.Ingest.PoolRetention = d
+		}
 	}
 	if v := os.Getenv("EARLYPAIR_CORS_ORIGINS"); v != "" {
 		cfg.Server.CORSOrigins = splitList(v)

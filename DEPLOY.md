@@ -177,6 +177,14 @@ or on the server:
 TAG=v0.1.0 docker compose up -d
 ```
 
+**Storage:** pools older than 48 hours are deleted every 10 minutes, with
+their reserves, risk history and swaps, and so are tokens no remaining pool
+uses. Starred pools — including those added by address — and pools anyone
+traded are kept. Change the window with `EARLYPAIR_POOL_RETENTION` in `.env`
+(`72h`, or `0` to keep everything) and `docker compose up -d`. Postgres reuses
+the freed space rather than handing it back to the disk, so the database
+levels off instead of shrinking.
+
 **Backups:** the database lives in the `early-pair2_pgdata` volume.
 
 ```
