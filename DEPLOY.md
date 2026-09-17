@@ -37,9 +37,13 @@ A Linux server (Ubuntu 22.04 or 24.04 works well) with at least 2 GB of RAM.
 
 ### 1. Install Docker with the compose plugin
 
+Skip the install if Docker is already there — the script warns about that
+for good reason, and can leave `apt` half-configured when it clashes with an
+existing install (`sudo dpkg --configure -a` finishes or explains it).
+
 ```
-curl -fsSL https://get.docker.com | sh
-docker compose version        # must print v2.x
+docker compose version        # any version, v2 or later, means you are set
+curl -fsSL https://get.docker.com | sh    # only if the line above fails
 ```
 
 ### 2. Create the user the runner runs as
