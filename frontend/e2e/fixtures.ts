@@ -59,6 +59,7 @@ function pool(p: {
   holders: number
   price?: number
   state?: string
+  accel?: number
 }) {
   const [s0, s1] = p.pair.split(' / ')
   return {
@@ -77,6 +78,7 @@ function pool(p: {
     feeTierBps: p.model === 'clmm' ? 30 : 25,
     liquidityUsd: p.liq,
     volume1hUsd: p.vol,
+    volAccel: p.accel ?? null,
     priceChange1h: p.change,
     buyers1h: p.buyers,
     sellers1h: p.sellers,
@@ -90,11 +92,11 @@ export const POOL_AERO = hex('2', 40)
 export const POOL_PEPE = hex('3', 40)
 
 export const POOLS = [
-  pool({ chainId: 'eth', addr: POOL_GROK, pair: 'GROK / WETH', dex: 'Uniswap v3', model: 'clmm', age: 2, liq: 412000, vol: 188000, change: 64.2, buyers: 412, sellers: 188, score: 12, lp: 'Locked 12mo', mint: false, tax: '0 / 0', top: 8.4, holders: 218, price: 0.00418, state: 'unconfirmed' }),
+  pool({ chainId: 'eth', addr: POOL_GROK, pair: 'GROK / WETH', accel: 4.2, dex: 'Uniswap v3', model: 'clmm', age: 2, liq: 412000, vol: 188000, change: 64.2, buyers: 412, sellers: 188, score: 12, lp: 'Locked 12mo', mint: false, tax: '0 / 0', top: 8.4, holders: 218, price: 0.00418, state: 'unconfirmed' }),
   pool({ chainId: 'base', addr: POOL_AERO, pair: 'AERO / USDC', dex: 'Aerodrome', model: 'v2', age: 7, liq: 1240000, vol: 512000, change: 8.4, buyers: 1840, sellers: 1207, score: 6, lp: 'Locked 24mo', mint: false, tax: '0 / 0', top: 4.1, holders: 1902 }),
   pool({ chainId: 'bsc', addr: POOL_PEPE, pair: 'PEPE2 / WBNB', dex: 'PancakeSwap v2', model: 'v2', age: 16, liq: 41200, vol: 302000, change: 488.0, buyers: 1214, sellers: 3, score: 91, lp: 'Unlocked', mint: true, tax: '12 / 24', top: 68.9, holders: 34 }),
   pool({ chainId: 'arb', addr: hex('4', 40), pair: 'ARBI / WETH', dex: 'Camelot v3', model: 'clmm', age: 22, liq: 384000, vol: 91200, change: -4.8, buyers: 342, sellers: 289, score: 22, lp: 'Locked 9mo', mint: false, tax: '0 / 0', top: 14.6, holders: 388, price: 0.2185 }),
-  pool({ chainId: 'base', addr: hex('5', 40), pair: 'DEGEN9 / WETH', dex: 'Uniswap v2', model: 'v2', age: 34, liq: 28800, vol: 74100, change: -38.2, buyers: 286, sellers: 9, score: 83, lp: 'Unlocked', mint: true, tax: '8 / 8', top: 55.4, holders: 22 }),
+  pool({ chainId: 'base', addr: hex('5', 40), pair: 'DEGEN9 / WETH', accel: 0.3, dex: 'Uniswap v2', model: 'v2', age: 34, liq: 28800, vol: 74100, change: -38.2, buyers: 286, sellers: 9, score: 83, lp: 'Unlocked', mint: true, tax: '8 / 8', top: 55.4, holders: 22 }),
   pool({ chainId: 'eth', addr: hex('6', 40), pair: 'STETH / WETH', dex: 'Curve', model: 'stable', age: 41, liq: 4820000, vol: 1120000, change: 0.2, buyers: 3980, sellers: 3411, score: 4, lp: 'Locked 36mo', mint: false, tax: '0 / 0', top: 3.2, holders: 5104 }),
   pool({ chainId: 'bsc', addr: hex('7', 40), pair: 'TURBO / USDT', dex: 'PancakeSwap v2', model: 'v2', age: 48, liq: 132000, vol: 58400, change: 16.9, buyers: 221, sellers: 158, score: 44, lp: 'Locked 1mo', mint: false, tax: '3 / 3', top: 28.1, holders: 208 }),
 ]

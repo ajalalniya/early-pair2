@@ -240,8 +240,12 @@ type Pool struct {
 	// Hooks is a Uniswap v4 pool's hook contract; empty when there is none.
 	Hooks string `json:"hooks,omitempty"`
 
-	LiquidityUSD  *float64 `json:"liquidityUsd"`
-	Volume1hUSD   *float64 `json:"volume1hUsd"`
+	LiquidityUSD *float64 `json:"liquidityUsd"`
+	Volume1hUSD  *float64 `json:"volume1hUsd"`
+	// VolAccel compares the last minute's volume with this pair's average
+	// minute so far: 3.2 means the last minute traded 3.2x its usual pace.
+	// Nil when the pair is too young, or too quiet, to compare.
+	VolAccel      *float64 `json:"volAccel"`
 	PriceChange1h *float64 `json:"priceChange1h"`
 	Buyers1h      *int     `json:"buyers1h"`
 	Sellers1h     *int     `json:"sellers1h"`

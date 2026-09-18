@@ -84,6 +84,11 @@ export const PoolSchema = z.object({
   feeTierBps: nullableInt,
   liquidityUsd: nullableNumber,
   volume1hUsd: nullableNumber,
+  /**
+   * The last minute's volume over this pair's average minute so far: 3.2 means
+   * it is trading at 3.2x its usual pace. Null until there is enough history.
+   */
+  volAccel: nullableNumber,
   priceChange1h: nullableNumber,
   buyers1h: nullableInt,
   sellers1h: nullableInt,

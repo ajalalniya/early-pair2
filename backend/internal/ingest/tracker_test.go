@@ -464,3 +464,71 @@ func TestPlanHistory(t *testing.T) {
 }
 
 func near(a, b float64) bool { return math.Abs(a-b) <= 1e-9*math.Max(1, math.Abs(b)) }
+
+// Volume acceleration answers "is this pair speeding up?": the last minute's
+// volume over the pair's own average minute. The pair's launch block bounds the
+// span, not the hour — measuring a ten-minute-old pair against an hour would
+// report every new pair as accelerating.
+func acceleratingPool(created uint64, swaps []swapRecord, head uint64) *trackedPool {
+	return &trackedPool{
+		p:     chain.Pool{ChainID: "base", Address: "0xpool", CreatedBlock: created},
+		swaps: swaps,
+		head:  head,
+	}
+}
+
+func at(block uint64) uint64 { return block << 20 }
+
+func TestVolumeAccelerationComparesTheLastMinuteWithTheAverage(t *testing.T) {
+	// 30 blocks to the minute, a pair 10 minutes old: 300 blocks of history.
+	const minute, head = 30, 1300
+	var quiet []swapRecord
+	for b := uint64(1010); b <= 1300; b += 10 {
+		quiet = append(quiet, swapRecord{at: at(b), quote: 10}) // 30 swaps, 10 a block-step
+	}
+	steady := acceleratingPool(1000, quiet, head)
+	got, ok := steady.volumeAcceleration(minute, 0)
+	if !ok {
+		t.Fatal("a ten-minute-old pair with volume should have a figure")
+	}
+	// Trading at one rate throughout: the last minute matches the average.
+	if math.Abs(got-1) > 0.05 {
+		t.Errorf("steady trading = %.2f, want about 1", got)
+	}
+
+	// The same pair with a burst in its last minute.
+	burst := append(append([]swapRecord{}, quiet...), swapRecord{at: at(1295), quote: 500})
+	got, ok = acceleratingPool(1000, burst, head).volumeAcceleration(minute, 0)
+	if !ok || got < 5 {
+		t.Errorf("a burst of 500 on top of a 30-a-minute pace = %.2f, want well above 5", got)
+	}
+
+	// And one that has gone quiet: volume early, nothing lately.
+	var early []swapRecord
+	for b := uint64(1010); b < 1100; b += 10 {
+		early = append(early, swapRecord{at: at(b), quote: 100})
+	}
+	got, ok = acceleratingPool(1000, early, head).volumeAcceleration(minute, 0)
+	if !ok || got != 0 {
+		t.Errorf("a pair that stopped trading = %.2f (ok %v), want 0", got, ok)
+	}
+}
+
+func TestVolumeAccelerationStaysSilentWithoutEnoughToCompare(t *testing.T) {
+	const minute = 30
+	swaps := []swapRecord{{at: at(1010), quote: 10}, {at: at(1040), quote: 10}}
+
+	// Younger than three windows: the last minute would be compared with itself.
+	if _, ok := acceleratingPool(1000, swaps, 1060).volumeAcceleration(minute, 0); ok {
+		t.Error("a two-minute-old pair reported an acceleration")
+	}
+	// Old enough, but nothing has traded.
+	if _, ok := acceleratingPool(1000, nil, 1300).volumeAcceleration(minute, 0); ok {
+		t.Error("a pair with no swaps reported an acceleration")
+	}
+	// An hour-old pair measures from the hour cutoff, not from its launch.
+	long := []swapRecord{{at: at(5010), quote: 10}, {at: at(5200), quote: 10}}
+	if _, ok := acceleratingPool(1000, long, 5300).volumeAcceleration(minute, 5000); !ok {
+		t.Error("an older pair should still be measured, over its last hour")
+	}
+}

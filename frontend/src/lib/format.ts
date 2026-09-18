@@ -161,3 +161,15 @@ export function buyerSellerRatio(buyers: Maybe<number>, sellers: Maybe<number>):
   if (sellers === 0) return buyers > 0 ? Infinity : null
   return buyers / sellers
 }
+
+/**
+ * Volume acceleration as a multiplier: `3.2×`, `12×`, `0.4×`. Above about
+ * 100 the exact figure stops meaning anything — a pair going from nothing to
+ * something — so it is capped rather than shown as `1,842×`.
+ */
+export function accel(v: Maybe<number>): string {
+  if (!isNum(v) || v < 0) return DASH
+  if (v >= 100) return '99+×'
+  if (v >= 10) return `${Math.round(v)}×`
+  return `${v.toFixed(1)}×`
+}

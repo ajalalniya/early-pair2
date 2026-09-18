@@ -17,6 +17,7 @@ export function makePool(over: Partial<Pool> = {}): Pool {
     feeTierBps: 30,
     liquidityUsd: 1_240_000,
     volume1hUsd: 512_000,
+    volAccel: 1.4,
     priceChange1h: 8.4,
     buyers1h: 1840,
     sellers1h: 1207,

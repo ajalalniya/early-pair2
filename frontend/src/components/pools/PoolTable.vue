@@ -6,7 +6,7 @@ import RiskChip from '@/components/ui/RiskChip.vue'
 import { useMediaQuery, usePrefersReducedMotion } from '@/composables/useMediaQuery'
 import { useNow } from '@/composables/useNow'
 import { chainMeta, dexscreenerUrl, poolKey } from '@/lib/chains'
-import { age, ageMinutes, buyerSellerRatio, money, num, pct } from '@/lib/format'
+import { accel, age, ageMinutes, buyerSellerRatio, money, num, pct } from '@/lib/format'
 import { arrivals, leaving } from '@/queries/feed'
 import type { Pool } from '@/types/api'
 
@@ -142,6 +142,15 @@ function view(p: Pool) {
     fresh: mins !== null && mins <= 10,
     liq: money(p.liquidityUsd),
     vol: money(p.volume1hUsd),
+    // Volume acceleration sits beside the volume: the number says how much
+    // traded, this says whether it is speeding up. Only marked when it is
+    // clearly one or the other, so a steady pair stays quiet.
+    accel: accel(p.volAccel),
+    accelTone: p.volAccel === null ? '' : p.volAccel >= 2 ? 'hot' : p.volAccel < 0.5 ? 'cold' : '',
+    accelTitle:
+      p.volAccel === null
+        ? 'Not enough history yet to compare this pair with itself'
+        : `The last minute traded ${accel(p.volAccel)} this pair's average minute`,
     buyers: num(p.buyers1h),
     sellers: num(p.sellers1h),
     // Traders still being looked up: the counts are a floor until this is zero.
@@ -217,7 +226,7 @@ function onRowKey(e: KeyboardEvent, index: number, p: Pool) {
       <div role="columnheader">POOL</div>
       <div role="columnheader" class="r">AGE</div>
       <div role="columnheader" class="r">LIQUIDITY</div>
-      <div role="columnheader" class="r">VOL 1H</div>
+      <div role="columnheader" class="r">VOL 1H · ACCEL</div>
       <div role="columnheader" class="r">BUYERS / SELLERS</div>
       <div role="columnheader" class="r">PRICE 1H</div>
       <div role="columnheader" class="c">RISK</div>
@@ -300,7 +309,9 @@ function onRowKey(e: KeyboardEvent, index: number, p: Pool) {
             </div>
             <div role="cell" class="num age" :class="{ fresh: v.fresh }"><span class="lbl">AGE</span>{{ v.age }}</div>
             <div role="cell" class="num"><span class="lbl">LIQUIDITY</span>{{ v.liq }}</div>
-            <div role="cell" class="num vol"><span class="lbl">VOL 1H</span>{{ v.vol }}</div>
+            <div role="cell" class="num vol" :title="v.accelTitle">
+              <span class="lbl">VOL 1H</span>{{ v.vol }}<span class="accel" :data-tone="v.accelTone">{{ v.accel }}</span>
+            </div>
             <div role="cell" class="num bs" :title="v.tradersTitle">
               <span class="lbl">BUYERS / SELLERS</span>
               <span class="buyers">{{ v.buyers }}<span v-if="v.partialTraders" class="floor">+</span></span><span class="slash">/</span
@@ -530,6 +541,17 @@ function onRowKey(e: KeyboardEvent, index: number, p: Pool) {
 }
 .age.fresh {
   color: var(--age-fresh);
+}
+.accel {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.accel[data-tone='hot'] {
+  color: oklch(0.84 0.15 85);
+}
+.accel[data-tone='cold'] {
+  color: var(--fg-3);
 }
 .vol {
   color: oklch(0.76 0.01 265);

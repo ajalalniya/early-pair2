@@ -203,8 +203,12 @@ type poolJSON struct {
 	// show it: a hook can take fees or block sells on every swap.
 	Hooks string `json:"hooks,omitempty"`
 
-	LiquidityUSD  *float64 `json:"liquidityUsd"`
-	Volume1hUSD   *float64 `json:"volume1hUsd"`
+	LiquidityUSD *float64 `json:"liquidityUsd"`
+	Volume1hUSD  *float64 `json:"volume1hUsd"`
+	// VolAccel is the last minute's volume over this pair's average minute so
+	// far: 3.2 means it is trading at 3.2x its usual pace, 1 is steady. Null
+	// until the pair has enough history to compare.
+	VolAccel      *float64 `json:"volAccel"`
 	PriceChange1h *float64 `json:"priceChange1h"`
 	Buyers1h      *int     `json:"buyers1h"`
 	Sellers1h     *int     `json:"sellers1h"`
@@ -242,7 +246,7 @@ func (s *Server) poolResponse(p chain.Pool) poolJSON {
 		Token0:     p.Token0, Token1: p.Token1,
 		FeeTierBps:   p.FeeTierBps,
 		Hooks:        p.Hooks,
-		LiquidityUSD: p.LiquidityUSD, Volume1hUSD: p.Volume1hUSD,
+		LiquidityUSD: p.LiquidityUSD, Volume1hUSD: p.Volume1hUSD, VolAccel: p.VolAccel,
 		PriceChange1h: p.PriceChange1h,
 		Buyers1h:      p.Buyers1h, Sellers1h: p.Sellers1h,
 		TradersPending: p.TradersPending,

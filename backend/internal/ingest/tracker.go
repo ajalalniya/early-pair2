@@ -602,6 +602,66 @@ func (tp *trackedPool) cutoff(hour uint64) uint64 {
 	return 0
 }
 
+// accelWindow is the recent slice volume acceleration compares: the last
+// minute against the pair's average minute. A minute is short enough to catch a
+// pair waking up inside the ten minutes it is tracked, and long enough that one
+// block's trades do not decide it.
+const accelWindow = time.Minute
+
+// minAccelWindows is how much history a pair needs before the comparison means
+// anything: with less, "the last minute against the average minute" is the last
+// minute against itself.
+const minAccelWindows = 3
+
+// volumeAcceleration compares the volume of the last window with the pair's
+// average window over its measured span — since it launched, or the last hour
+// for a pair older than that. 3.2 means the last minute traded 3.2 times the
+// pair's usual minute; 1 is steady, below 1 is cooling off.
+//
+// It is a ratio of quote-token amounts, so no dollar price is needed and it is
+// reported even when the quote asset has no price. Nil until the pair has
+// minAccelWindows of history and some volume to compare against.
+func (tp *trackedPool) volumeAcceleration(window, cutoff uint64) (float64, bool) {
+	if window == 0 || len(tp.swaps) == 0 || tp.head == 0 {
+		return 0, false
+	}
+	// The measured span starts at the pair's own creation, not at the hour
+	// cutoff: for a ten-minute-old pair the hour reaches back before it existed,
+	// and dividing by an hour would report every pair as accelerating.
+	from := cutoff
+	if tp.p.CreatedBlock > from {
+		from = tp.p.CreatedBlock
+	}
+	if tp.head <= from {
+		return 0, false
+	}
+	span := tp.head - from
+	if span < uint64(minAccelWindows)*window {
+		return 0, false
+	}
+	recentFrom := tp.head - window
+
+	var total, recent float64
+	for _, s := range tp.swaps {
+		b := blockOf(s.at)
+		if b <= from {
+			continue
+		}
+		total += s.quote
+		if b > recentFrom {
+			recent += s.quote
+		}
+	}
+	if total <= 0 {
+		return 0, false
+	}
+	perWindow := total / (float64(span) / float64(window))
+	if perWindow <= 0 {
+		return 0, false
+	}
+	return recent / perWindow, true
+}
+
 // priceChange returns the price at the start of the hour — the last point at
 // or before the cutoff, or the first point for a pair younger than that — and
 // the latest price.
@@ -916,6 +976,9 @@ func (t *tracker) metrics(tp *trackedPool) store.Market {
 	}
 	vol := volumeQuote * usd
 	m.Volume1hUSD = &vol
+	if accel, ok := tp.volumeAcceleration(t.blocksIn(accelWindow), cutoff); ok {
+		m.VolAccel = &accel
+	}
 
 	if base, quote, known := tp.holdings(); known && len(tp.prices) > 0 {
 		liq := quote*usd + base*tp.prices[len(tp.prices)-1].v*usd
@@ -1122,6 +1185,7 @@ func sameMarket(a, b store.Market) bool {
 		return *x == *y
 	}
 	return eqF(a.LiquidityUSD, b.LiquidityUSD) && eqF(a.Volume1hUSD, b.Volume1hUSD) &&
+		eqF(a.VolAccel, b.VolAccel) &&
 		eqF(a.PriceChange1h, b.PriceChange1h) && eqI(a.Buyers1h, b.Buyers1h) && eqI(a.Sellers1h, b.Sellers1h) &&
 		eqI(a.TradersPending, b.TradersPending)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DASH, addr, age, bps, duration, money, moneyFine, num, pct, price, ratio, signedMoney, signedMoneyFine, trimDecimal, units } from '@/lib/format'
+import { DASH, accel, addr, age, bps, duration, money, moneyFine, num, pct, price, ratio, signedMoney, signedMoneyFine, trimDecimal, units } from '@/lib/format'
 
 describe('money', () => {
   it('follows the design rule', () => {
@@ -116,5 +116,25 @@ describe('moneyFine', () => {
     expect(signedMoneyFine(-2.5)).toBe('-2.50')
     expect(moneyFine(null)).toBe(DASH)
     expect(signedMoneyFine(undefined)).toBe(DASH)
+  })
+})
+
+describe('accel', () => {
+  // The multiplier beside VOL 1H: how the last minute compares with the pair's
+  // own average minute.
+  it('reads as a multiplier, with less precision the larger it gets', () => {
+    expect(accel(1)).toBe('1.0×')
+    expect(accel(3.24)).toBe('3.2×')
+    expect(accel(0.4)).toBe('0.4×')
+    expect(accel(12.6)).toBe('13×')
+  })
+
+  it('caps a figure that has stopped meaning anything', () => {
+    expect(accel(1842)).toBe('99+×')
+  })
+
+  it('says nothing when there is nothing to say', () => {
+    expect(accel(null)).toBe(DASH)
+    expect(accel(undefined)).toBe(DASH)
   })
 })

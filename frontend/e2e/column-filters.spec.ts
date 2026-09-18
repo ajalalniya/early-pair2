@@ -63,3 +63,22 @@ test('the DEX filter narrows the feed to one DEX', async ({ page, harness }) => 
   await expect(page).not.toHaveURL(/dex=/)
   await expect(table.getByTestId(`pool-row-base:${POOL_AERO}`)).toBeVisible()
 })
+
+// Volume acceleration sits beside VOL 1H: the last minute against the pair's
+// own average minute, so a burst is visible without reading the volume itself.
+test('the feed shows how fast volume is accelerating', async ({ page, harness }) => {
+  void harness // installs the mocked backend
+  await page.goto('/pools')
+  const table = page.getByTestId('pools-table')
+
+  const hot = table.getByTestId(`pool-row-eth:${POOL_GROK}`)
+  await expect(hot).toContainText('4.2×')
+  await expect(hot.locator('.accel')).toHaveAttribute('data-tone', 'hot')
+
+  const cold = table.getByTestId('pool-row-base:0x' + '5'.repeat(40))
+  await expect(cold).toContainText('0.3×')
+  await expect(cold.locator('.accel')).toHaveAttribute('data-tone', 'cold')
+
+  // A pair with nothing to compare yet says so rather than showing a number.
+  await expect(table.getByTestId(`pool-row-base:${POOL_AERO}`).locator('.accel')).toHaveText('—')
+})

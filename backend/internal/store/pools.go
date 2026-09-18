@@ -208,6 +208,10 @@ type Market struct {
 	// is not known yet, so Buyers1h and Sellers1h are a floor while it is above
 	// zero.
 	TradersPending *int
+	// VolAccel is the last minute's volume over the pair's average minute so
+	// far: above 1 means trading is speeding up. Nil until there is enough
+	// history to compare.
+	VolAccel *float64
 }
 
 // UpdateRisk stores the denormalised summary on the pool and appends the full
@@ -272,7 +276,7 @@ SELECT p.chain_id, p.address, p.pair, p.dex, p.model, p.state,
        p.liquidity_usd, p.volume_1h_usd, p.price_change_1h, p.buyers_1h, p.sellers_1h,
        p.risk_score, p.risk_band, p.risk_verdict, p.risk_checks, p.risk_scored_at,
        t0.symbol, t0.decimals, t1.symbol, t1.decimals,
-       p.screened_at, p.removed_at, p.traders_pending, fp.created_at, p.imported_at
+       p.screened_at, p.removed_at, p.traders_pending, fp.created_at, p.imported_at, p.vol_accel
 `
 
 const poolJoins = `
@@ -470,7 +474,7 @@ func scanPools(rows pgx.Rows) ([]chain.Pool, error) {
 			&p.LiquidityUSD, &p.Volume1hUSD, &p.PriceChange1h, &p.Buyers1h, &p.Sellers1h,
 			&riskScore, &riskBand, &riskVerd, &riskChecks, &riskAt,
 			&t0Sym, &t0Dec, &t1Sym, &t1Dec,
-			&p.ScreenedAt, &p.RemovedAt, &p.TradersPending, &p.FavoritedAt, &p.ImportedAt,
+			&p.ScreenedAt, &p.RemovedAt, &p.TradersPending, &p.FavoritedAt, &p.ImportedAt, &p.VolAccel,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("store: scan pool: %w", err)
@@ -582,10 +586,11 @@ UPDATE pools SET
     buyers_1h       = COALESCE($6, buyers_1h),
     sellers_1h      = COALESCE($7, sellers_1h),
     traders_pending = COALESCE($8, traders_pending),
+    vol_accel       = COALESCE($9, vol_accel),
     updated_at      = now()
 WHERE chain_id = $1 AND address = $2`,
 		string(chainID), strings.ToLower(address),
-		m.LiquidityUSD, m.Volume1hUSD, m.PriceChange1h, m.Buyers1h, m.Sellers1h, m.TradersPending)
+		m.LiquidityUSD, m.Volume1hUSD, m.PriceChange1h, m.Buyers1h, m.Sellers1h, m.TradersPending, m.VolAccel)
 	if err != nil {
 		return fmt.Errorf("store: update tracked market: %w", err)
 	}
