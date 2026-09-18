@@ -7,8 +7,9 @@ import SearchBar from '@/components/pools/SearchBar.vue'
 import FundsCard from '@/components/aside/FundsCard.vue'
 import TradePanel from '@/components/aside/TradePanel.vue'
 import FraudCard from '@/components/aside/FraudCard.vue'
+import LiquidityDepth from '@/components/aside/LiquidityDepth.vue'
 import { api, errorMessage } from '@/lib/api'
-import { parsePoolKey, poolKey } from '@/lib/chains'
+import { orientPool, parsePoolKey, poolKey } from '@/lib/chains'
 import { matchesRisk, type RiskFilter } from '@/lib/risk'
 import { activeCount, COLUMN_KEYS, encodeRange, filtersFromQuery, matchesColumns, type ColumnFilters } from '@/lib/columnFilters'
 import { ALL_DEXES, dexFromQuery, dexOptions, matchesDex } from '@/lib/dexFilter'
@@ -159,6 +160,14 @@ const selected = computed<Pool | null>(() => {
   return (searching.value ? searchRows.value[0] : rows.value[0]) ?? null
 })
 const selectedKey = computed(() => (selected.value ? poolKey(selected.value.chainId, selected.value.address) : null))
+// The depth chart labels prices in the pair's quote asset, the same way the
+// table and trade panel do.
+const selectedSides = computed(() => {
+  const p = selected.value
+  if (!p) return { token: '', quote: '' }
+  const sides = orientPool(p, chains.data.value?.find((c) => c.id === p.chainId))
+  return { token: sides.base?.symbol ?? p.pair.split(' / ')[0] ?? '', quote: sides.quote?.symbol ?? p.pair.split(' / ')[1] ?? '' }
+})
 
 function writeQuery(patch: LocationQueryRaw) {
   const next: LocationQueryRaw = { ...route.query, ...patch }
@@ -295,6 +304,7 @@ const detailMissing = computed(() => !!selParam.value && !selected.value && deta
       <FundsCard />
       <template v-if="selected">
         <TradePanel :pool="selected" />
+        <LiquidityDepth :pool="selected" :quote-symbol="selectedSides.quote" :token-symbol="selectedSides.token" />
         <FraudCard :pool="selected" />
       </template>
       <section v-else class="card empty">

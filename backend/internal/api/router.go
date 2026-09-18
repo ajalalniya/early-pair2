@@ -43,6 +43,9 @@ type Server struct {
 
 	// v4Keys caches Uniswap v4 PoolKeys by chain:poolId. A key never changes.
 	v4Keys sync.Map
+	// liquidity caches depth distributions by chain:pool for liquidityTTL. The
+	// entries are small and bounded by the pools anyone actually opens.
+	liquidity sync.Map
 }
 
 // SetBus attaches the cross-process event bus.
@@ -86,6 +89,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/pools/{chainID}/{pool}", s.handleGetPool)
 			r.Get("/pools/{chainID}/{pool}/risk", s.handlePoolRisk)
 			r.Get("/pools/{chainID}/{pool}/traders", s.handlePoolTraders)
+			r.Get("/pools/{chainID}/{pool}/liquidity", s.handleLiquidity)
 		})
 
 		// Adding a pool by address writes, so it sits outside the cached group.

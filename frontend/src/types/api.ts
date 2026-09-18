@@ -142,6 +142,32 @@ export const PoolStateUpdateSchema = z
   })
 export type PoolStateUpdate = z.infer<typeof PoolStateUpdateSchema>
 
+/** One step of a concentrated-liquidity depth chart. */
+export const LiquidityBinSchema = z.object({
+  tickLower: z.number().int(),
+  tickUpper: z.number().int(),
+  priceLower: z.number(),
+  priceUpper: z.number(),
+  /** L, the pool's own unit: what makes bins comparable with each other. */
+  liquidity: z.number(),
+  amount0: z.number(),
+  amount1: z.number(),
+  /** The bin holding the current price: the liquidity a trade meets first. */
+  active: z.boolean(),
+})
+export type LiquidityBin = z.infer<typeof LiquidityBinSchema>
+
+export const LiquidityDistributionSchema = z.object({
+  tick: z.number().int(),
+  price: z.number(),
+  tickSpacing: z.number().int(),
+  liquidity: z.number(),
+  bins: z.array(LiquidityBinSchema).nullish().transform((v) => v ?? []),
+  /** The scan reached its budget: the chart's edges are its own, not the pool's. */
+  truncated: z.boolean().default(false),
+})
+export type LiquidityDistribution = z.infer<typeof LiquidityDistributionSchema>
+
 export const TradersSchema = z.object({
   window: z.string(),
   buyers: z.number().int(),

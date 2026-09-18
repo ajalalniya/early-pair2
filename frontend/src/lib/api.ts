@@ -14,6 +14,7 @@ import {
   ChainInfoSchema,
   FundsSchema,
   ImportPoolResponseSchema,
+  LiquidityDistributionSchema,
   HoldingSchema,
   ListSchema,
   NonceResponseSchema,
@@ -195,6 +196,12 @@ export const api = {
 
   async removeFavorite(chainId: string, address: string) {
     await request(`/favorites/${enc(chainId)}/${enc(address)}`, { method: 'DELETE' })
+  },
+
+  /** How a concentrated-liquidity pool's liquidity is spread across price. */
+  async liquidity(chainId: string, address: string, signal?: AbortSignal) {
+    const body = await request(`/pools/${enc(chainId)}/${enc(address)}/liquidity`, { signal })
+    return parse(LiquidityDistributionSchema, body, 'liquidity distribution')
   },
 
   async traders(chainId: string, address: string, window = '1h') {

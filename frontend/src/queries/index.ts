@@ -153,6 +153,28 @@ export function useHideHolding() {
   })
 }
 
+/**
+ * A pool's liquidity distribution. Only concentrated pools have one, and the
+ * backend reads it from chain state, so this refetches slowly: the shape moves
+ * when someone opens, closes or crosses a position, not tick by tick.
+ */
+export function useLiquidityQuery(pool: MaybeRefOrGetter<{ chainId: string; address: string; model: string } | null>) {
+  return useQuery({
+    queryKey: computed(() => {
+      const p = toValue(pool)
+      return ['pool', 'liquidity', p?.chainId ?? '', p?.address ?? ''] as const
+    }),
+    queryFn: ({ signal }) => {
+      const p = toValue(pool)!
+      return api.liquidity(p.chainId, p.address, signal)
+    },
+    enabled: computed(() => toValue(pool)?.model === 'clmm'),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+    retry: noRetryOn([404, 422, 501]),
+  })
+}
+
 export function usePositionsQuery() {
   const wallet = useWallet()
   return useQuery({

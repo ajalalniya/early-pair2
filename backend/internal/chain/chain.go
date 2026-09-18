@@ -168,6 +168,10 @@ type UniswapV4 struct {
 	Quoter          string `yaml:"quoter"`
 	UniversalRouter string `yaml:"universalRouter"`
 	Permit2         string `yaml:"permit2"`
+	// StateView reads a v4 pool's price, liquidity and ticks by pool id: a v4
+	// pool has no contract of its own to ask. Unset, the depth chart is
+	// unavailable on this chain — nothing else depends on it.
+	StateView string `yaml:"stateView"`
 	// ExtraSwapParam: the router's exact-input params carry one more uint256
 	// between amountOutMinimum and hookData than the current Uniswap release —
 	// Robinhood Chain calls it minHopPriceX36, Arc's router has it too. Encoded
