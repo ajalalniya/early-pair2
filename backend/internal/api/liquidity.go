@@ -28,7 +28,22 @@ const liquidityTTL = 20 * time.Second
 
 type liquidityEntry struct {
 	at   time.Time
-	dist *clmm.Distribution
+	dist *liquidityResponse
+}
+
+// liquidityResponse is the distribution plus the two figures needed to read it
+// in money rather than in L: what the quote asset is worth, and what the pool
+// charges. A depth chart needs neither — but sizing a deposit against the
+// liquidity already there ("what would a dollar earn in this range?") turns on
+// both, and the caller cannot work either out from the bins alone.
+type liquidityResponse struct {
+	*clmm.Distribution
+	// QuoteUSD is the dollar price of the token this pool is priced in, null
+	// when it is not an asset with an established price.
+	QuoteUSD *float64 `json:"quoteUsd"`
+	// FeeBps is the pool's own fee tier, the share of each swap its liquidity
+	// providers are paid.
+	FeeBps *int `json:"feeBps"`
 }
 
 func (s *Server) handleLiquidity(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +116,10 @@ func (s *Server) handleLiquidity(w http.ResponseWriter, r *http.Request) {
 			"this pool's liquidity could not be read from the chain; try again")
 		return
 	}
-	s.liquidity.Store(key, liquidityEntry{at: time.Now(), dist: dist})
-	writeJSON(w, http.StatusOK, dist)
+	resp := &liquidityResponse{Distribution: dist, FeeBps: p.FeeTierBps}
+	if usd, ok := s.quoteUSD(ctx, ch, o.Quote.Address); ok {
+		resp.QuoteUSD = &usd
+	}
+	s.liquidity.Store(key, liquidityEntry{at: time.Now(), dist: resp})
+	writeJSON(w, http.StatusOK, resp)
 }

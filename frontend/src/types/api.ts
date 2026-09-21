@@ -165,6 +165,13 @@ export const LiquidityDistributionSchema = z.object({
   bins: z.array(LiquidityBinSchema).nullish().transform((v) => v ?? []),
   /** The scan reached its budget: the chart's edges are its own, not the pool's. */
   truncated: z.boolean().default(false),
+  /**
+   * The dollar price of the token this pool is priced in, and the pool's own
+   * fee tier. Neither is needed to draw the depth chart; both are needed to
+   * say what a dollar deposited into a range would earn.
+   */
+  quoteUsd: nullableNumber,
+  feeBps: nullableInt,
 })
 export type LiquidityDistribution = z.infer<typeof LiquidityDistributionSchema>
 
