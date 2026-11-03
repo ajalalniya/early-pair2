@@ -2,8 +2,9 @@ name: CI/CD
 
 # Every push and pull request is tested. A version tag (v1.2.3) is also built
 # into images, pushed to GitHub Container Registry, and deployed to the server
-# by the self-hosted runner installed there — the same flow as early-pairs,
-# with the tests in front so a broken build never reaches the server.
+# over SSH from a GitHub-hosted runner, with the tests in front so a broken
+# build never reaches the server. No runner lives on the server: in a public
+# repository, a pull request could otherwise run its own code there.
 on:
   push:
     branches: [main]
@@ -142,7 +143,9 @@ jobs:
   deploy:
     name: Deploy to server
     needs: build-and-push
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
+    # Only tag pushes get here (build-and-push is gated on them), and pushing a
+    # tag needs write access, so the SSH key is never handed to a fork's code.
     permissions:
       contents: read
       packages: read
@@ -154,47 +157,49 @@ jobs:
         with:
           sparse-checkout: deploy
 
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Update the compose file
+      # The host, user and port are secrets too, so the server's address is
+      # masked in the public logs.
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER || 'github' }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
         run: |
-          mkdir -p "$DEPLOY_DIR"
-          cp deploy/docker-compose.yml "$DEPLOY_DIR/docker-compose.yml"
-          if [ ! -f "$DEPLOY_DIR/.env" ]; then
-            echo "::error::$DEPLOY_DIR/.env is missing. Copy deploy/.env.example there and fill it in (see DEPLOY.md)."
+          if [ -z "$SSH_KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$SSH_HOST" ]; then
+            echo "::error::Set the DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS and DEPLOY_HOST secrets (see DEPLOY.md)."
             exit 1
           fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Copy the deploy files
+        run: |
+          ssh server "mkdir -p $(printf %q "$DEPLOY_DIR")"
+          scp deploy/docker-compose.yml deploy/deploy.sh "server:$DEPLOY_DIR/"
+
+      - name: Log in to GitHub Container Registry on the server
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | ssh server docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Deploy
-        working-directory: ${{ env.DEPLOY_DIR }}
         run: |
-          export IMAGE_OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          docker compose pull
-          docker compose up -d --remove-orphans
-          # Remember what is running, so a manual `docker compose up -d` in this
-          # directory starts the same release rather than whatever `latest` is.
-          echo "$TAG" > .deployed-tag
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          ssh server "bash $(printf %q "$DEPLOY_DIR/deploy.sh") $(printf %q "$TAG") $(printf %q "$owner")"
 
-      - name: Check the site is up
-        working-directory: ${{ env.DEPLOY_DIR }}
-        run: |
-          port="$(grep -E '^WEB_PORT=' .env | tail -1 | cut -d= -f2)"
-          port="${port:-80}"
-          for i in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${port}/healthz" >/dev/null; then
-              echo "Release $TAG is up on port ${port}."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::The site did not become healthy within 150s."
-          docker compose ps
-          docker compose logs --tail=80 api indexer web
-          exit 1
-
-      - name: Log out and clean up old images
+      - name: Log out of the registry on the server
         if: always()
-        run: |
-          docker logout ghcr.io || true
-          docker image prune -f --filter "until=168h" || true
+        run: ssh server docker logout ghcr.io || true

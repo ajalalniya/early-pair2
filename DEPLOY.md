@@ -1,8 +1,8 @@
 # Deploying EarlyPair
 
 Releases deploy themselves: push a version tag and GitHub Actions tests the
-code, builds two images, pushes them to GitHub Container Registry, and a runner
-on your server pulls them and restarts the stack.
+code, builds two images, pushes them to GitHub Container Registry, then logs in
+to your server over SSH, pulls them and restarts the stack.
 
 ```
 git tag v0.1.0 && git push origin v0.1.0
@@ -13,7 +13,7 @@ git tag v0.1.0 && git push origin v0.1.0
 | Backend tests | GitHub | `gofmt`, `go vet`, `go test` |
 | Frontend tests | GitHub | type check, unit tests |
 | Build and push images | GitHub, tags only | `early-pair2-backend` and `early-pair2-web` to `ghcr.io`, tagged with the version and `latest` |
-| Deploy to server | your server, tags only | pulls the images, `docker compose up -d`, waits for `/healthz` |
+| Deploy to server | GitHub, tags only, over SSH | copies `deploy/` to the server, pulls the images, `docker compose up -d`, waits for `/healthz` |
 
 Pushes to `main` and pull requests run the tests only.
 
@@ -46,31 +46,75 @@ docker compose version        # any version, v2 or later, means you are set
 curl -fsSL https://get.docker.com | sh    # only if the line above fails
 ```
 
-### 2. Create the user the runner runs as
+### 2. Create the user the deploy logs in as
 
 ```
 sudo adduser --disabled-password --gecos "" github
 sudo usermod -aG docker github
 ```
 
-### 3. Install the self-hosted runner
+Being in the `docker` group is as good as root on this server, so this user's
+SSH key is only for the deploy job.
 
-On GitHub: **the repository → Settings → Actions → Runners → New self-hosted
-runner → Linux**. Run the commands it shows as the `github` user
-(`sudo -iu github`), then install it as a service so it survives reboots:
+### 3. Give GitHub Actions an SSH key
+
+On your machine, make a key used for nothing else, with no passphrase:
+
+```
+ssh-keygen -t ed25519 -N "" -C "early-pair2 deploy" -f early-pair2-deploy
+```
+
+Let it log in as `github` on the server (still from your machine):
+
+```
+ssh you@your-server 'sudo -iu github mkdir -p -m 700 .ssh'
+cat early-pair2-deploy.pub | ssh you@your-server 'sudo tee -a /home/github/.ssh/authorized_keys'
+ssh you@your-server 'sudo chown -R github:github /home/github/.ssh && sudo chmod 600 /home/github/.ssh/authorized_keys'
+```
+
+Record the server's host key, so the job can tell the real server from an
+impostor:
+
+```
+ssh-keyscan -p 22 your-server > known_hosts
+```
+
+Then on GitHub, under **the repository → Settings → Secrets and variables →
+Actions → Secrets**, add:
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_SSH_KEY` | the whole of `early-pair2-deploy` (the private key, not `.pub`) |
+| `DEPLOY_KNOWN_HOSTS` | the whole of `known_hosts` |
+| `DEPLOY_HOST` | the server's IP or host name |
+| `DEPLOY_USER` | optional, defaults to `github` |
+| `DEPLOY_PORT` | optional, defaults to `22` |
+
+Then delete `early-pair2-deploy` and `known_hosts` from your machine. Test the
+login once with `ssh -i early-pair2-deploy github@your-server docker ps`
+before you delete them.
+
+GitHub-hosted runners connect from changing addresses, so a firewall cannot
+allow just GitHub. Keep the server's SSH to key logins only
+(`PasswordAuthentication no` in `/etc/ssh/sshd_config`).
+
+**Upgrading from the self-hosted runner:** after the first SSH deploy works,
+remove the old runner. On the server, as `github`:
 
 ```
 cd ~/actions-runner
-sudo ./svc.sh install github
-sudo ./svc.sh start
+sudo ./svc.sh stop
+sudo ./svc.sh uninstall
+./config.sh remove --token <token from Settings → Actions → Runners → the runner → Remove>
 ```
 
-The deploy job picks it up through the `self-hosted` label, which every runner has.
+then delete `~/actions-runner`, and check that it is gone from Settings →
+Actions → Runners.
 
 ### 4. Create the settings file
 
-The repository is private, so the template cannot be downloaded anonymously.
-Copy it up from your machine instead:
+The template cannot be downloaded without a login while the repository is
+private, so copy it up from your machine:
 
 ```
 # on your machine, from the repository root
@@ -146,8 +190,9 @@ often another program already holds port 80 or 443
 WalletConnect option is hidden; injected wallets such as MetaMask still work.
 It is compiled into the page, so it is a variable, not a secret.
 
-No secrets need adding: the workflow uses the built-in `GITHUB_TOKEN` both to
-push the images and, on the server, to pull them.
+Besides the SSH secrets from step 3, nothing needs adding: the workflow uses
+the built-in `GITHUB_TOKEN` both to push the images and, on the server, to
+pull them. It logs the server out of the registry again when it finishes.
 
 ## Releasing
 
@@ -200,6 +245,6 @@ docker compose exec -T postgres pg_dump -U earlypair earlypair | gzip > backup-$
   `EARLYPAIR_RPC_URL_<ID>` in `.env`; changing which endpoints are enabled
   needs a config change and a release.
 - **The images are private** by default in GitHub Container Registry, which is
-  fine: the runner pulls them with the workflow's token.
+  fine: the server pulls them with the workflow's token.
 - **Only the web port is published.** Postgres, Redis and the API's metrics
   port are not reachable from outside the server.
